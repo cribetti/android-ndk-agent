@@ -18,13 +18,18 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -34,15 +39,33 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val defaultModel = File(filesDir, "models/qwen2.5-coder-1.5b-q4_k_m.gguf").absolutePath
-        engine.initModel(defaultModel, contextSize = 2048)
+        val modelFile = File(filesDir, "models/qwen2.5-coder-1.5b-q4_k_m.gguf")
 
         setContent {
+            var modelStatus by remember { mutableStateOf("Loading ${modelFile.name}...") }
+
+            LaunchedEffect(modelFile.absolutePath) {
+                modelStatus = withContext(Dispatchers.IO) {
+                    if (!modelFile.exists()) {
+                        "Model missing: push .gguf to files/models/${modelFile.name}"
+                    } else if (engine.initModel(modelFile.absolutePath, contextSize = 2048)) {
+                        "Model ready: ${modelFile.name}"
+                    } else {
+                        "Failed to load ${modelFile.name}"
+                    }
+                }
+            }
+
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AgentScreen(onSend = { prompt ->
-                        agentLoop.run(prompt)
-                    })
+                    AgentScreen(
+                        modelStatus = modelStatus,
+                        onSend = { prompt ->
+                            withContext(Dispatchers.IO) {
+                                agentLoop.run(prompt)
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -55,9 +78,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AgentScreen(onSend: (String) -> AgentResult) {
+fun AgentScreen(
+    modelStatus: String,
+    onSend: suspend (String) -> AgentResult,
+) {
     var input by remember { mutableStateOf("") }
+    var isRunning by remember { mutableStateOf(false) }
     val timeline = remember { mutableStateListOf<String>() }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -66,6 +94,7 @@ fun AgentScreen(onSend: (String) -> AgentResult) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("On-Device NDK Agent (llama.cpp + JNI)", style = MaterialTheme.typography.titleMedium)
+        Text(modelStatus, style = MaterialTheme.typography.bodySmall)
 
         LazyColumn(
             modifier = Modifier
@@ -87,24 +116,35 @@ fun AgentScreen(onSend: (String) -> AgentResult) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
+                enabled = !isRunning,
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Ask offline agent...") },
             )
-            Button(onClick = {
-                val prompt = input.trim()
-                if (prompt.isNotEmpty()) {
-                    input = ""
-                    timeline.add("USER: $prompt")
-                    val res = onSend(prompt)
-                    res.steps.forEach { step ->
-                        if (step.toolCall != null) {
-                            timeline.add("TOOL[${step.toolCall.name}]: ${step.toolResult}")
+            Button(
+                enabled = !isRunning && input.isNotBlank(),
+                onClick = {
+                    val prompt = input.trim()
+                    if (prompt.isNotEmpty()) {
+                        input = ""
+                        isRunning = true
+                        timeline.add("USER: $prompt")
+                        scope.launch {
+                            try {
+                                val res = onSend(prompt)
+                                res.steps.forEach { step ->
+                                    if (step.toolCall != null) {
+                                        timeline.add("TOOL[${step.toolCall.name}]: ${step.toolResult}")
+                                    }
+                                }
+                                timeline.add("AGENT: ${res.finalAnswer}")
+                            } finally {
+                                isRunning = false
+                            }
                         }
                     }
-                    timeline.add("AGENT: ${res.finalAnswer}")
-                }
-            }) {
-                Text("Run")
+                },
+            ) {
+                Text(if (isRunning) "Running..." else "Run")
             }
         }
     }
