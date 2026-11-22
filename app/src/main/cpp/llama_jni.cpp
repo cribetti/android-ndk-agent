@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #if USE_LLAMA_CPP
 #include "llama.h"
@@ -88,10 +89,69 @@ Java_com_agentlab_ndkagent_NativeLlamaEngine_nativeGenerate(
     }
 
 #if USE_LLAMA_CPP
-    // Tokenization & sampling loop wired here once llama.cpp submodule is attached.
-    (void)max_tokens;
-    std::string response = "[llama.cpp active: " + g_model_path + "] Prompt length=" +
-                           std::to_string(input.size());
+    if (!g_model || !g_ctx) {
+        return env->NewStringUTF("ERROR: llama.cpp model/context not ready.");
+    }
+
+    const llama_vocab* vocab = llama_model_get_vocab(g_model);
+    if (!vocab) {
+        return env->NewStringUTF("ERROR: Failed to obtain model vocab.");
+    }
+
+    // Clear KV cache for a fresh prompt evaluation.
+    llama_memory_clear(llama_get_memory(g_ctx), true);
+
+    const int n_prompt_estimate = -llama_tokenize(
+        vocab, input.c_str(), static_cast<int32_t>(input.size()), nullptr, 0, true, true);
+    if (n_prompt_estimate <= 0) {
+        return env->NewStringUTF("ERROR: Failed to tokenize prompt.");
+    }
+
+    std::vector<llama_token> prompt_tokens(static_cast<size_t>(n_prompt_estimate));
+    const int n_tokens = llama_tokenize(
+        vocab,
+        input.c_str(),
+        static_cast<int32_t>(input.size()),
+        prompt_tokens.data(),
+        static_cast<int32_t>(prompt_tokens.size()),
+        true,
+        true);
+    if (n_tokens < 0) {
+        return env->NewStringUTF("ERROR: Tokenization buffer mismatch.");
+    }
+    prompt_tokens.resize(static_cast<size_t>(n_tokens));
+
+    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), static_cast<int32_t>(prompt_tokens.size()));
+    if (llama_decode(g_ctx, batch) != 0) {
+        return env->NewStringUTF("ERROR: llama_decode failed on prompt.");
+    }
+
+    llama_sampler_chain_params sparams = llama_sampler_chain_default_params();
+    llama_sampler* smpl = llama_sampler_chain_init(sparams);
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.1f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+
+    std::string response;
+    const int limit = max_tokens > 0 ? max_tokens : 256;
+    for (int step = 0; step < limit; ++step) {
+        llama_token next_tok = llama_sampler_sample(smpl, g_ctx, -1);
+        if (llama_vocab_is_eog(vocab, next_tok)) {
+            break;
+        }
+
+        char piece_buf[256];
+        int piece_len = llama_token_to_piece(vocab, next_tok, piece_buf, sizeof(piece_buf), 0, true);
+        if (piece_len > 0) {
+            response.append(piece_buf, static_cast<size_t>(piece_len));
+        }
+
+        llama_batch next_batch = llama_batch_get_one(&next_tok, 1);
+        if (llama_decode(g_ctx, next_batch) != 0) {
+            break;
+        }
+    }
+
+    llama_sampler_free(smpl);
     return env->NewStringUTF(response.c_str());
 #else
     (void)max_tokens;
