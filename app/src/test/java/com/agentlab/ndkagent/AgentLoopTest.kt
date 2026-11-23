@@ -25,6 +25,8 @@ class AgentLoopTest {
             val bus = ToolBus(root)
             val result = bus.execute(ToolCall("read_note", mapOf("path" to "../../etc/passwd")))
             assertTrue("Expected access denied, got: $result", result.contains("Access denied"))
+            val absResult = bus.execute(ToolCall("read_note", mapOf("path" to "/etc/passwd")))
+            assertTrue("Expected access denied for absolute path, got: $absResult", absResult.contains("Access denied"))
         } finally {
             root.deleteRecursively()
         }

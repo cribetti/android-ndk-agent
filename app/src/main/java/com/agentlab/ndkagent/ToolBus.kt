@@ -25,6 +25,9 @@ class ToolBus(private val sandboxRoot: File) {
 
     fun safePath(relPath: String): File {
         require(relPath.isNotBlank()) { "Path cannot be blank" }
+        if (File(relPath).isAbsolute) {
+            throw SecurityException("Access denied: '$relPath' escapes sandbox")
+        }
         val candidate = File(sandboxRoot, relPath)
         val canonicalTarget = candidate.canonicalPath
         val rootPrefix = if (canonicalRoot.endsWith(File.separator)) canonicalRoot else canonicalRoot + File.separator

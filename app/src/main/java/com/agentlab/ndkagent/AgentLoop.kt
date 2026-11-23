@@ -18,7 +18,7 @@ data class AgentResult(
 class AgentLoop(
     private val engine: InferenceEngine,
     private val toolBus: ToolBus,
-    private val maxTurns: Int = 5,
+    private val maxTurns: Int = 2,
 ) {
     fun run(
         userPrompt: String,
@@ -53,7 +53,8 @@ class AgentLoop(
             history.append("<|im_start|>assistant\n")
         }
 
-        val fallback = "Max turns ($maxTurns) reached without final answer."
+        val fallback = steps.lastOrNull()?.toolResult
+            ?: "Max turns ($maxTurns) reached without final answer."
         return AgentResult(finalAnswer = fallback, steps = steps)
     }
 }
