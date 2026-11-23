@@ -18,7 +18,7 @@ data class AgentResult(
 class AgentLoop(
     private val engine: InferenceEngine,
     private val toolBus: ToolBus,
-    private val maxTurns: Int = 2,
+    private val maxTurns: Int = 4,
 ) {
     fun run(
         userPrompt: String,
