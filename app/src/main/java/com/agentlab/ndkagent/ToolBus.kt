@@ -1,6 +1,8 @@
 package com.agentlab.ndkagent
 
 import java.io.File
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 data class ToolCall(
     val name: String,
@@ -61,6 +63,10 @@ class ToolBus(private val sandboxRoot: File) {
 
             "device_info" -> {
                 "os=${System.getProperty("os.name")} arch=${System.getProperty("os.arch")} cores=${Runtime.getRuntime().availableProcessors()}"
+            }
+
+            "current_time" -> {
+                ZonedDateTime.now().format(DateTimeFormatter.RFC_1123_DATE_TIME)
             }
 
             else -> "ERROR: Unknown tool '${call.name}'"

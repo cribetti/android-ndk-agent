@@ -20,11 +20,14 @@ class AgentLoop(
     private val toolBus: ToolBus,
     private val maxTurns: Int = 5,
 ) {
-    fun run(userPrompt: String): AgentResult {
+    fun run(
+        userPrompt: String,
+        onToken: (String) -> Unit = {},
+    ): AgentResult {
         val history = StringBuilder()
         history.append("<|im_start|>system\n")
         history.append("You are an offline Android systems assistant.\n")
-        history.append("TOOLS: list_notes(), read_note(path), write_note(path, content), device_info().\n")
+        history.append("TOOLS: list_notes(), read_note(path), write_note(path, content), device_info(), current_time().\n")
         history.append("Reply with ONLY a JSON object {\"name\": ..., \"arguments\": {...}} to call a tool, or plain text for the final answer.")
         history.append("<|im_end|>\n")
         history.append("<|im_start|>user\n$userPrompt<|im_end|>\n")
@@ -33,7 +36,7 @@ class AgentLoop(
         val steps = mutableListOf<AgentStep>()
         val seenCalls = mutableSetOf<ToolCall>()
         for (turn in 1..maxTurns) {
-            val output = engine.generate(history.toString(), maxTokens = 128).trim()
+            val output = engine.generateStream(history.toString(), maxTokens = 128, onToken = onToken).trim()
             val call = ToolBus.parseToolCall(output)
             if (call == null) {
                 steps.add(AgentStep(turn = turn, modelOutput = output))

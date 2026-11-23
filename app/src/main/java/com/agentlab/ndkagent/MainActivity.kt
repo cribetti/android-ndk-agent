@@ -64,9 +64,9 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AgentScreen(
                         modelStatus = modelStatus,
-                        onSend = { prompt ->
+                        onSend = { prompt, onToken ->
                             withContext(Dispatchers.IO) {
-                                agentLoop.run(prompt)
+                                agentLoop.run(prompt, onToken = onToken)
                             }
                         },
                     )
@@ -84,10 +84,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AgentScreen(
     modelStatus: String,
-    onSend: suspend (String) -> AgentResult,
+    onSend: suspend (String, (String) -> Unit) -> AgentResult,
 ) {
     var input by remember { mutableStateOf("") }
     var isRunning by remember { mutableStateOf(false) }
+    var streamingText by remember { mutableStateOf("") }
     val timeline = remember { mutableStateListOf<String>() }
     val scope = rememberCoroutineScope()
 
@@ -113,6 +114,13 @@ fun AgentScreen(
                     Text(entry, modifier = Modifier.padding(12.dp))
                 }
             }
+            if (isRunning && streamingText.isNotEmpty()) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Text("... $streamingText", modifier = Modifier.padding(12.dp))
+                    }
+                }
+            }
         }
 
         Row(
@@ -133,10 +141,15 @@ fun AgentScreen(
                     if (prompt.isNotEmpty()) {
                         input = ""
                         isRunning = true
+                        streamingText = ""
                         timeline.add("USER: $prompt")
                         scope.launch {
                             try {
-                                val res = onSend(prompt)
+                                val res = onSend(prompt) { token ->
+                                    scope.launch(Dispatchers.Main) {
+                                        streamingText += token
+                                    }
+                                }
                                 res.steps.forEach { step ->
                                     if (step.toolCall != null) {
                                         timeline.add("TOOL[${step.toolCall.name}]: ${step.toolResult}")
@@ -144,6 +157,7 @@ fun AgentScreen(
                                 }
                                 timeline.add("AGENT: ${res.finalAnswer}")
                             } finally {
+                                streamingText = ""
                                 isRunning = false
                             }
                         }

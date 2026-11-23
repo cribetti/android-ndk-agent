@@ -68,4 +68,16 @@ class AgentLoopTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun toolBusCurrentTimeReturnsTimestamp() {
+        val root = Files.createTempDirectory("ndk-agent-time").toFile()
+        try {
+            val bus = ToolBus(root)
+            val now = bus.execute(ToolCall("current_time", emptyMap()))
+            assertTrue("Expected non-empty timestamp, got: $now", now.isNotBlank() && !now.startsWith("ERROR"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 }
