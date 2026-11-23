@@ -4,10 +4,10 @@ An offline, zero-cloud Android AI agent runtime combining **Android NDK (`CMake`
 
 ## Architecture
 - `app/src/main/cpp/CMakeLists.txt` & `llama_jni.cpp` — C++17 JNI bridge with `std::mutex` state protection, `-O3` optimization, and 6-thread `llama.cpp` tokenization + sampling (`arm64-v8a` and `x86_64`).
-- `app/src/main/java/com/agentlab/ndkagent/LlamaEngine.kt` — `InferenceEngine` abstraction + `NativeLlamaEngine` JNI bindings.
-- `app/src/main/java/com/agentlab/ndkagent/ToolBus.kt` — Path-jailed (`canonicalPath`) on-device tools (`list_notes`, `read_note`, `write_note`, `device_info`) and JSON tool-call parser.
+- `app/src/main/java/com/agentlab/ndkagent/LlamaEngine.kt` — `InferenceEngine` abstraction + `NativeLlamaEngine` JNI bindings (including `generateStream`).
+- `app/src/main/java/com/agentlab/ndkagent/ToolBus.kt` — Path-jailed (`canonicalPath`) on-device tools (`list_notes`, `read_note`, `write_note`, `device_info`, `current_time`) and JSON tool-call parser.
 - `app/src/main/java/com/agentlab/ndkagent/AgentLoop.kt` — Multi-turn Qwen ChatML agent loop (`run`) with `seenCalls` duplicate-call guard.
-- `app/src/main/java/com/agentlab/ndkagent/MainActivity.kt` — Async (`Dispatchers.IO`) Jetpack Compose Material 3 chat & tool-trace UI with edge-to-edge padding.
+- `app/src/main/java/com/agentlab/ndkagent/MainActivity.kt` — Async (`Dispatchers.IO`) Jetpack Compose Material 3 chat & live token-streaming UI with edge-to-edge padding.
 
 ## Build & Verify
 ```bash
