@@ -22,23 +22,32 @@ class AgentLoop(
 ) {
     fun run(userPrompt: String): AgentResult {
         val history = StringBuilder()
-        history.appendLine("SYSTEM: You are an offline Android systems assistant.")
-        history.appendLine("TOOLS: list_notes(), read_note(path), write_note(path, content), device_info().")
-        history.appendLine("Reply with a single JSON object {\"name\": ..., \"arguments\": {...}} to call a tool, or plain text for the final answer.")
-        history.appendLine("USER: $userPrompt")
+        history.append("<|im_start|>system\n")
+        history.append("You are an offline Android systems assistant.\n")
+        history.append("TOOLS: list_notes(), read_note(path), write_note(path, content), device_info().\n")
+        history.append("Reply with ONLY a JSON object {\"name\": ..., \"arguments\": {...}} to call a tool, or plain text for the final answer.")
+        history.append("<|im_end|>\n")
+        history.append("<|im_start|>user\n$userPrompt<|im_end|>\n")
+        history.append("<|im_start|>assistant\n")
 
         val steps = mutableListOf<AgentStep>()
+        val seenCalls = mutableSetOf<ToolCall>()
         for (turn in 1..maxTurns) {
-            val output = engine.generate(history.toString()).trim()
+            val output = engine.generate(history.toString(), maxTokens = 128).trim()
             val call = ToolBus.parseToolCall(output)
             if (call == null) {
                 steps.add(AgentStep(turn = turn, modelOutput = output))
                 return AgentResult(finalAnswer = output, steps = steps)
             }
+            if (!seenCalls.add(call) && steps.isNotEmpty()) {
+                val prevResult = steps.last().toolResult ?: "(no output)"
+                return AgentResult(finalAnswer = prevResult, steps = steps)
+            }
             val result = toolBus.execute(call)
             steps.add(AgentStep(turn = turn, modelOutput = output, toolCall = call, toolResult = result))
-            history.appendLine("ASSISTANT: $output")
-            history.appendLine("[TOOL RESULT]: $result")
+            history.append("$output<|im_end|>\n")
+            history.append("<|im_start|>user\n[TOOL RESULT]: $result\nAnswer the user in plain text now. Do not call the same tool again.<|im_end|>\n")
+            history.append("<|im_start|>assistant\n")
         }
 
         val fallback = "Max turns ($maxTurns) reached without final answer."

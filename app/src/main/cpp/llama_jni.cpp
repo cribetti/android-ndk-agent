@@ -55,7 +55,9 @@ Java_com_agentlab_ndkagent_NativeLlamaEngine_nativeInitModel(
         return JNI_FALSE;
     }
     llama_context_params cparams = llama_context_default_params();
-    cparams.n_ctx = static_cast<uint32_t>(n_ctx > 0 ? n_ctx : 2048);
+    cparams.n_ctx = static_cast<uint32_t>(n_ctx > 0 ? n_ctx : 1024);
+    cparams.n_threads = 6;
+    cparams.n_threads_batch = 6;
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {
         llama_model_free(g_model);
@@ -132,12 +134,14 @@ Java_com_agentlab_ndkagent_NativeLlamaEngine_nativeGenerate(
     llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
 
     std::string response;
-    const int limit = max_tokens > 0 ? max_tokens : 256;
+    const int limit = (max_tokens > 0 && max_tokens < 160) ? max_tokens : 160;
+    int generated = 0;
     for (int step = 0; step < limit; ++step) {
         llama_token next_tok = llama_sampler_sample(smpl, g_ctx, -1);
         if (llama_vocab_is_eog(vocab, next_tok)) {
             break;
         }
+        ++generated;
 
         char piece_buf[256];
         int piece_len = llama_token_to_piece(vocab, next_tok, piece_buf, sizeof(piece_buf), 0, true);
@@ -151,6 +155,7 @@ Java_com_agentlab_ndkagent_NativeLlamaEngine_nativeGenerate(
         }
     }
 
+    LOGI("Generated %d tokens (prompt=%d)", generated, n_tokens);
     llama_sampler_free(smpl);
     return env->NewStringUTF(response.c_str());
 #else

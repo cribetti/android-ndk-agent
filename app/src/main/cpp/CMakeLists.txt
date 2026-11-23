@@ -14,6 +14,7 @@ find_library(android-lib android)
 # unit tests build cleanly out of the box.
 set(LLAMA_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp")
 if(EXISTS "${LLAMA_CPP_DIR}/CMakeLists.txt")
+    add_compile_options(-O3)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
